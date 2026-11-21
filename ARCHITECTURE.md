@@ -74,7 +74,8 @@ SQLALCHEMY_WARN_20=1 python -m pytest -q tests/
 `./check.sh` runs the same install followed by the stricter
 `SQLALCHEMY_WARN_20=1 python -W error::DeprecationWarning -m pytest -q tests/`.
 
-`tests/test_acceptance.py` asserts the two static acceptance criteria (the
-2.x pin and the absence of legacy APIs); the behaviour tests cover the third
-criterion (registering, reading and updating functions against a temporary
-SQLite database).
+`tests/test_acceptance.py` asserts the 2.x pin, the absence of legacy APIs
+under `babyagi/`, that the installed SQLAlchemy is 2.x at runtime, and that
+`check.sh` installs the requirements and runs the strict suite. The behaviour
+tests cover registering, reading and updating functions against a temporary
+SQLite database.
