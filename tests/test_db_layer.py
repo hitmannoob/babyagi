@@ -47,6 +47,36 @@ def test_get_missing_function_returns_none(router):
     assert router.get_function("does-not-exist") is None
 
 
+def test_created_date_default_is_naive_utc(router):
+    """Version timestamps stay naive UTC after the SA 2.0 migration.
+
+    The migration replaced ``datetime.utcnow`` with
+    ``datetime.now(timezone.utc).replace(tzinfo=None)``; this pins the
+    parity: a naive datetime close to the current UTC wall clock.
+    """
+
+    def naive_utc_now():
+        return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+    before = naive_utc_now()
+    router.add_function("stamped", "v1")
+    after_add = naive_utc_now()
+
+    first = datetime.datetime.fromisoformat(
+        router.get_function("stamped")["created_date"]
+    )
+    assert first.tzinfo is None
+    assert before <= first <= after_add
+
+    router.update_function("stamped", code="v2")
+    after_update = naive_utc_now()
+
+    versions = {v["version"]: v for v in router.get_function_versions("stamped")}
+    second = datetime.datetime.fromisoformat(versions[2]["created_date"])
+    assert second.tzinfo is None
+    assert first <= second <= after_update
+
+
 def test_update_function_creates_new_active_version(router):
     router.add_function("f", "def f():\n    return 1\n")
     router.update_function("f", code="def f():\n    return 2\n")
