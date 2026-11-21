@@ -8,8 +8,7 @@ from PythonFunc.core.framework import func
 )
 def get_user_db_class():
     from sqlalchemy import create_engine, Column, Integer, String, MetaData
-    from sqlalchemy.ext.declarative import declarative_base
-    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.orm import sessionmaker, registry
     from contextlib import contextmanager
     from sqlalchemy.exc import SQLAlchemyError
 
@@ -18,7 +17,7 @@ def get_user_db_class():
             self.engine = create_engine(db_url)
             self.Session = sessionmaker(bind=self.engine)
             self.metadata = MetaData()
-            self.Base = declarative_base(metadata=self.metadata)
+            self.Base = registry(metadata=self.metadata).generate_base()
 
         @contextmanager
         def session_scope(self):
@@ -205,7 +204,7 @@ def get_table(db_name: str, table_name: str):
     imports=["sqlalchemy", "json"]  # Added 'json' to imports
 )
 def update_table(db_name: str, table_name: str, new_columns: str):
-    from sqlalchemy import create_engine, MetaData, Table, Column, String, Integer, Float, Boolean, DateTime, LargeBinary
+    from sqlalchemy import create_engine, MetaData, Table, Column, String, Integer, Float, Boolean, DateTime, LargeBinary, text
     from sqlalchemy.schema import CreateTable
     import json  # Imported json within the function
 
@@ -249,7 +248,8 @@ def update_table(db_name: str, table_name: str, new_columns: str):
                 new_column = Column(col['name'], get_column_type(col['type']))
                 # Generate the SQL statement to add the new column
                 alter_stmt = f'ALTER TABLE {table_name} ADD COLUMN {new_column.name} {new_column.type}'
-                user_db.engine.execute(alter_stmt)
+                with user_db.engine.begin() as connection:
+                    connection.execute(text(alter_stmt))
 
         # Refresh the table metadata
         user_db.metadata.clear()
@@ -332,7 +332,7 @@ def create_record(db_name: str, table_name: str, data: list):
         return f"Error creating record: {str(e)}"
         
 def read_records(db_name: str, table_name: str, filters: dict = None):
-    from sqlalchemy import create_engine, MetaData, Table
+    from sqlalchemy import create_engine, MetaData, Table, select
     from sqlalchemy.orm import sessionmaker
     UserDB_name = func.get_user_db_class()
     UserDB = type(UserDB_name, (), {
@@ -344,10 +344,10 @@ def read_records(db_name: str, table_name: str, filters: dict = None):
     table = Table(table_name, user_db.metadata, autoload_with=user_db.engine)
     Session = sessionmaker(bind=user_db.engine)
     with Session() as session:
-        query = session.query(table)
+        stmt = select(table)
         if filters:
-            query = query.filter_by(**filters)
-        return [dict(row) for row in query.all()]
+            stmt = stmt.where(*(table.c[key] == value for key, value in filters.items()))
+        return [dict(row._mapping) for row in session.execute(stmt).all()]
 
 @func.register_function(
     metadata={"description": "Update a record in a table."},
