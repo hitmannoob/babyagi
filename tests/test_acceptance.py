@@ -54,3 +54,20 @@ def test_no_legacy_sqlalchemy_apis_under_babyagi():
                 offenders.append(f"{path.relative_to(REPO_ROOT)}:{line_number}: {name}")
 
     assert not offenders, "legacy SQLAlchemy usage remains:\n" + "\n".join(offenders)
+
+
+def test_runtime_sqlalchemy_is_2_x():
+    """Criterion 3 must be verified against SQLAlchemy 2.x, not assumed."""
+    import sqlalchemy
+
+    major = int(sqlalchemy.__version__.split(".", 1)[0])
+    assert major >= 2, f"tests must run on SQLAlchemy 2.x, got {sqlalchemy.__version__}"
+
+
+def test_check_sh_runs_the_acceptance_command():
+    """Goal item 4: check.sh installs requirements and runs the strict suite."""
+    script = (REPO_ROOT / "check.sh").read_text(encoding="utf-8")
+
+    assert "-r requirements.txt" in script
+    assert "SQLALCHEMY_WARN_20=1" in script
+    assert "python -W error::DeprecationWarning -m pytest -q tests/" in script
