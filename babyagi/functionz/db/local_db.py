@@ -1,6 +1,6 @@
 # local_db.py
 
-from sqlalchemy import create_engine, or_
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker, scoped_session, joinedload
 from sqlalchemy.exc import SQLAlchemyError
 from contextlib import contextmanager
@@ -43,17 +43,20 @@ class LocalDB:
 
 
     def get_function(self, session, name):
-        return session.query(Function).filter_by(name=name).first()
+        return session.scalars(select(Function).filter_by(name=name)).first()
 
     def get_active_version(self, session, function):
-        return session.query(FunctionVersion).filter_by(function_id=function.id, is_active=True).options(
-            joinedload(FunctionVersion.dependencies)
+        return session.scalars(
+            select(FunctionVersion)
+            .filter_by(function_id=function.id, is_active=True)
+            .options(joinedload(FunctionVersion.dependencies))
         ).first()
 
     def get_all_functions(self, session):
-        return session.query(Function).options(
-            joinedload(Function.versions).joinedload(FunctionVersion.dependencies)
-        ).all()
+        return session.scalars(
+            select(Function)
+            .options(joinedload(Function.versions).joinedload(FunctionVersion.dependencies))
+        ).unique().all()
 
     def add_or_update_function(self, session, name, code, metadata, dependencies, triggers, input_parameters, output_parameters, imports=None):
         function = self.get_function(session, name)
@@ -66,7 +69,7 @@ class LocalDB:
         import_objects = []
         if imports:
             for import_name in imports:
-                imp = session.query(Import).filter_by(name=import_name).first()
+                imp = session.scalars(select(Import).filter_by(name=import_name)).first()
                 if not imp:
                     imp = Import(name=import_name, source='external')
                     session.add(imp)
@@ -101,7 +104,7 @@ class LocalDB:
 
 
     def add_import(self, session, name, source, lib=None):
-        existing_import = session.query(Import).filter_by(name=name).first()
+        existing_import = session.scalars(select(Import).filter_by(name=name)).first()
         if not existing_import:
             new_import = Import(name=name, source=source, lib=lib)
             session.add(new_import)
@@ -134,7 +137,7 @@ class LocalDB:
 
     def update_log(self, session, log_id: int, **kwargs) -> None:
         # Fetch the log entry by id
-        log_entry = session.query(Log).filter(Log.id == log_id).first()
+        log_entry = session.scalars(select(Log).filter(Log.id == log_id)).first()
         if log_entry:
             # Update only the fields provided in kwargs
             for key, value in kwargs.items():
@@ -149,7 +152,7 @@ class LocalDB:
 
 
     def update_log_params(self, session, log_id: int, params) -> None:
-        log_entry = session.query(Log).filter_by(id=log_id).one_or_none()
+        log_entry = session.scalars(select(Log).filter_by(id=log_id)).one_or_none()
         if log_entry is None:
             raise ValueError(f"Log entry with id {log_id} not found.")
 
@@ -166,7 +169,7 @@ class LocalDB:
         :param log_id: The ID of the log to retrieve.
         :return: Log object if found, else None.
         """
-        return session.query(Log).filter_by(id=log_id).first()
+        return session.scalars(select(Log).filter_by(id=log_id)).first()
 
     def get_child_logs(self, session, parent_id: int):
         """
@@ -176,24 +179,24 @@ class LocalDB:
         :param parent_id: The ID of the parent log.
         :return: List of Log objects.
         """
-        return session.query(Log).filter_by(parent_log_id=parent_id).all()
+        return session.scalars(select(Log).filter_by(parent_log_id=parent_id)).all()
     
     def get_logs(self, session, function_name=None, start_date=None, end_date=None, triggered_by_log_id=None):
-        query = session.query(Log)
+        stmt = select(Log)
 
         if function_name:
-            query = query.filter(Log.function_name == function_name)
+            stmt = stmt.filter(Log.function_name == function_name)
 
         if start_date:
-            query = query.filter(Log.timestamp >= start_date)
+            stmt = stmt.filter(Log.timestamp >= start_date)
 
         if end_date:
-            query = query.filter(Log.timestamp <= end_date)
+            stmt = stmt.filter(Log.timestamp <= end_date)
 
         if triggered_by_log_id:
-            query = query.filter(Log.triggered_by_log_id == triggered_by_log_id)
+            stmt = stmt.filter(Log.triggered_by_log_id == triggered_by_log_id)
 
-        return query.all()
+        return session.scalars(stmt).all()
 
 
     def get_log_bundle(self, session, log_id):
@@ -202,7 +205,7 @@ class LocalDB:
         def fetch_related_logs(current_log_id):
             if current_log_id in logs_collected:
                 return
-            log = session.query(Log).filter_by(id=current_log_id).one_or_none()
+            log = session.scalars(select(Log).filter_by(id=current_log_id)).one_or_none()
             if not log:
                 return
             logs_collected[current_log_id] = log
@@ -212,16 +215,18 @@ class LocalDB:
                 fetch_related_logs(log.parent_log_id)
 
                 # Fetch sibling logs
-                sibling_logs = session.query(Log).filter(
-                    Log.parent_log_id == log.parent_log_id,
-                    Log.id != current_log_id
+                sibling_logs = session.scalars(
+                    select(Log).filter(
+                        Log.parent_log_id == log.parent_log_id,
+                        Log.id != current_log_id
+                    )
                 ).all()
                 for sibling in sibling_logs:
                     if sibling.id not in logs_collected:
                         fetch_related_logs(sibling.id)
 
             # Fetch child logs
-            child_logs = session.query(Log).filter_by(parent_log_id=current_log_id).all()
+            child_logs = session.scalars(select(Log).filter_by(parent_log_id=current_log_id)).all()
             for child in child_logs:
                 if child.id not in logs_collected:
                     fetch_related_logs(child.id)
@@ -251,10 +256,10 @@ class LocalDB:
         session.add(secret_key)
 
     def get_secret_key(self, session, key_name):
-        return session.query(SecretKey).filter_by(name=key_name).first()
+        return session.scalars(select(SecretKey).filter_by(name=key_name)).first()
 
     
     def get_all_secret_keys(self, session):
-        return session.query(SecretKey).all()
+        return session.scalars(select(SecretKey)).all()
 
     
