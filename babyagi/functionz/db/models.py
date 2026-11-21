@@ -1,16 +1,16 @@
 # models.py
 
 from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey, Boolean, Table, Float, LargeBinary
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import DeclarativeBase, relationship
 from cryptography.fernet import Fernet
 from cryptography.fernet import InvalidToken
 from sqlalchemy.ext.hybrid import hybrid_property
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
-Base = declarative_base()
+class Base(DeclarativeBase):
+    pass
 
 KEY_FILE = 'encryption_key.json'
 
@@ -55,7 +55,7 @@ class FunctionVersion(Base):
     code = Column(String)
     function_metadata = Column(JSON)
     is_active = Column(Boolean, default=False)
-    created_date = Column(DateTime, default=datetime.utcnow)
+    created_date = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     input_parameters = Column(JSON)
     output_parameters = Column(JSON)
     function = relationship("Function", back_populates="versions")

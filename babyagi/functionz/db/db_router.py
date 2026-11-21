@@ -2,6 +2,8 @@ from typing import List, Optional, Dict, Any
 from contextlib import contextmanager
 from datetime import datetime
 
+from sqlalchemy import select
+
 from .local_db import LocalDB
 from .base_db import BaseDB
 from .models import Import, Function, FunctionVersion, Log
@@ -135,17 +137,18 @@ class DBRouter(BaseDB):
 
     def get_all_imports(self) -> List[Dict[str, Any]]:
         with self.session_scope() as session:
-            imports = session.query(Import).all()
+            imports = session.scalars(select(Import)).all()
             return [{"name": imp.name, "source": imp.source, "lib": imp.lib} for imp in imports]
 
     def get_function_imports(self, function_name: str) -> List[Dict[str, Any]]:
         with self.session_scope() as session:
-            function = session.query(Function).filter_by(name=function_name).first()
+            function = session.scalars(select(Function).filter_by(name=function_name)).first()
             if function:
-                imports = (session.query(Import)
-                           .join(FunctionVersion.imports)
-                           .filter(FunctionVersion.function_id == function.id)
-                           .all())
+                imports = session.scalars(
+                    select(Import)
+                    .join(FunctionVersion.imports)
+                    .filter(FunctionVersion.function_id == function.id)
+                ).all()
                 return [{"name": imp.name, "source": imp.source, "lib": imp.lib} for imp in imports]
             return []
 
@@ -231,9 +234,11 @@ class DBRouter(BaseDB):
                     fetch_related_logs(log.parent_log_id)
 
                     # Fetch sibling logs
-                    sibling_logs = session.query(Log).filter(
-                        Log.parent_log_id == log.parent_log_id,
-                        Log.id != current_log_id
+                    sibling_logs = session.scalars(
+                        select(Log).filter(
+                            Log.parent_log_id == log.parent_log_id,
+                            Log.id != current_log_id
+                        )
                     ).all()
                     for sibling in sibling_logs:
                         fetch_related_logs(sibling.id)
