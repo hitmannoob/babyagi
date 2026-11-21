@@ -8,6 +8,7 @@ temporary SQLite file. They are written to pass on both SQLAlchemy 1.4 and
 import datetime
 
 import pytest
+from sqlalchemy import select
 
 from babyagi.functionz.db.db_router import DBRouter
 from babyagi.functionz.db.local_db import LocalDB
@@ -244,7 +245,7 @@ def test_secret_value_is_encrypted_at_rest(router):
     with router.session_scope() as session:
         from babyagi.functionz.db.models import SecretKey
 
-        stored = session.query(SecretKey).filter_by(name="api_key").one()
+        stored = session.scalars(select(SecretKey).filter_by(name="api_key")).one()
         assert stored._encrypted_value != b"plain-value"
         assert b"plain-value" not in stored._encrypted_value
 
